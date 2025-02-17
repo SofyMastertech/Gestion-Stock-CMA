@@ -1,0 +1,332 @@
+/* Style de base pour tous les widgets */
+QWidget {
+    background-color: #FFFFFF;
+    font: 12px "Segoe UI";
+    color: #2E2E2E;
+    padding: 0;
+    border-radius: 8px;
+}
+
+/* Style pour QMessageBox */
+QMessageBox {
+    background-color: rgba(255, 255, 255, 0.98);
+    border: 1px solid #D0D0D0;
+    border-radius: 10px;
+}
+
+QMessageBox QLabel#qt_msgbox_label {
+    font: 13pt "Segoe UI Semibold";
+    color: #2E2E2E;
+    margin: 10px 0;
+}
+
+/* Style pour les onglets */
+QTabWidget::pane {
+    border: none;
+    background: #FFFFFF;
+}
+
+QTabBar::tab {
+    background: #F7F7F7;
+    color: #2E2E2E;
+    padding: 10px 20px;
+    font: 12pt "Segoe UI Semibold";
+    border: 1px solid #D0D0D0;
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-right: 4px;
+}
+
+QTabBar::tab:selected {
+    background: #FFFFFF;
+    color: #007ACC;
+    border: 1px solid #D0D0D0;
+    border-bottom: 3px solid #007ACC;
+}
+
+QTabBar::tab:hover {
+    background: #E9F2FA;
+    color: #007ACC;
+}
+
+/* Style pour les champs de texte */
+QLineEdit {
+    background: #FFFFFF;
+    border: 2px solid #D0D0D0;
+    border-radius: 6px;
+    height: 35px;
+    padding: 0 10px;
+    font: 11pt "Segoe UI";
+    color: #2E2E2E;
+    margin: 5px 0;
+}
+
+QLineEdit:focus {
+    border-color: #007ACC;
+}
+
+QLineEdit:disabled {
+    background-color: #F0F0F0;
+    color: #A0A0A0;
+}
+
+/* Style pour les boutons */
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #007ACC, stop:1 #005F9E);
+    color: #FFFFFF;
+    height: 40px;
+    padding: 0 20px;
+    font: bold 12pt "Segoe UI";
+    border: none;
+    border-radius: 6px;
+    margin: 10px 0;
+}
+
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3399FF, stop:1 #007ACC);
+}
+
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #005F9E, stop:1 #004B7C);
+}
+
+QPushButton:disabled {
+    background-color: #D0D0D0;
+    color: #A0A0A0;
+}
+
+/* Style pour les combobox */
+QComboBox {
+    background-color: #FFFFFF;
+    border: 2px solid #D0D0D0;
+    height: 35px;
+    border-radius: 6px;
+    padding: 0 10px;
+    font: 12pt "Segoe UI Semibold";
+    color: #2E2E2E;
+}
+
+QComboBox:hover {
+    border-color: #007ACC;
+}
+
+QComboBox::drop-down {
+    background-color: transparent;
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    border: 1px solid #D0D0D0;
+    selection-background-color: #007ACC;
+    selection-color: #FFFFFF;
+}
+
+/* Style pour les tableaux */
+QTableWidget {
+    background-color: #FFFFFF;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E;
+    alternate-background-color: #F7F7F7;
+    gridline-color: #D0D0D0;
+}
+
+QHeaderView {
+    background-color: #F0F0F0;
+    color: #2E2E2E;
+    font: bold 12pt "Segoe UI";
+}
+
+QHeaderView::section {
+    background-color: transparent;
+    border: none;
+    text-align: center;
+}
+
+QHeaderView::section:hover {
+    background-color: #E9F2FA;
+}
+
+QTableWidget::item {
+    text-align: center;
+}
+
+QTableWidget::item:hover {
+    background-color: #007ACC;
+    color: #FFFFFF;
+}
+
+/* Style pour les widgets de date et heure */
+QDateTimeEdit {
+    border: 2px solid #D0D0D0;
+    height: 35px;
+    border-radius: 6px;
+    text-align: center;
+    padding: 0 10px;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E;
+}
+
+/* Style pour le calendrier */
+QCalendarWidget QAbstractItemView {
+    background-color: #FFFFFF;
+    border-radius: 6px;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E;
+}
+
+QCalendarWidget QAbstractItemView::item {
+    padding: 10px;
+}
+
+QCalendarWidget QAbstractItemView::item:selected {
+    background-color: #007ACC;
+    color: #FFFFFF;
+}
+
+/* Style pour QLabel */
+QLabel {
+    font: bold 12pt "Segoe UI";
+    color: #2E2E2E;
+    background-color: transparent;
+    padding: 2px 4px;
+}
+
+QLabel:hover {
+    color: #007ACC;
+}
+
+/* Style pour QSpinBox */
+QSpinBox {
+    background: #FFFFFF;
+    border: 2px solid #D0D0D0;
+    border-radius: 6px;
+    height: 35px;
+    padding: 0 10px;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E;
+}
+
+QSpinBox:focus {
+    border-color: #007ACC;
+}
+
+QSpinBox::up-button, QSpinBox::down-button {
+    background: #007ACC;
+    border: none;
+    width: 20px;
+    height: 15px;
+    border-radius: 4px;
+}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+    background: #3399FF;
+}
+
+/* Style pour les sliders */
+QSlider::groove:horizontal {
+    border: 1px solid #D0D0D0;
+    height: 8px;
+    background: #F0F0F0;
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background: #007ACC;
+    border: 2px solid #3399FF;
+    width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    margin: -6px 0;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #3399FF;
+}
+
+/* Style pour QGroupBox */
+QGroupBox {
+    border: 2px solid #D0D0D0;
+    border-radius: 6px;
+    margin-top: 10px;
+    font: bold 12pt "Segoe UI";
+    color: #007ACC;
+    padding: 10px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 5px;
+    background-color: #FFFFFF;
+}
+
+/* Style pour QRadioButton */
+QRadioButton {
+    color: #2E2E2E;
+    background-color: transparent;
+    border: none;
+    padding: 0 5px;
+    font-size: 12px;
+}
+
+QRadioButton::indicator {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #007ACC;
+    border-radius: 6px;
+    background: #FFFFFF;
+}
+
+QRadioButton::indicator:checked {
+    background: #007ACC;
+    border: 2px solid #3399FF;
+}
+
+/* Style pour la boîte de dialogue */
+QDialog {
+    background-color: #FFFFFF;
+    border: 2px solid #D0D0D0;
+    border-radius: 8px;
+}
+
+/* Style pour QScrollArea */
+QScrollArea {
+    background-color: #F7F7F7;
+    border: 1px solid #D0D0D0;
+    border-radius: 6px;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: transparent;
+}
+
+/* Style pour la barre de défilement verticale */
+QScrollBar:vertical {
+    background-color: #F0F0F0;
+    width: 12px;
+    margin: 0;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #007ACC;
+    min-height: 30px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #3399FF;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}

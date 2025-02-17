@@ -1,0 +1,332 @@
+/* Style de base pour tous les widgets */
+QWidget {
+    background-color: #FFFFFF;
+    font: 12px "Segoe UI";
+    color: #2E2E2E; /* Garder le texte sombre pour la lisibilité sur fond blanc */
+    padding: 0;
+    border-radius: 8px;
+}
+
+/* Style pour QMessageBox */
+QMessageBox {
+    background-color: rgba(255, 255, 255, 0.98);
+    border: 1px solid #D0D0D0; /* Bordure grise légère, peut être ajustée */
+    border-radius: 10px;
+}
+
+QMessageBox QLabel#qt_msgbox_label {
+    font: 13pt "Segoe UI Semibold";
+    color: #2E2E2E; /* Garder le texte sombre */
+    margin: 10px 0;
+}
+
+/* Style pour les onglets */
+QTabWidget::pane {
+    border: none;
+    background: #FFFFFF;
+}
+
+QTabBar::tab {
+    background: #F7F7F7; /* Gris très clair, neutre */
+    color: #2E2E2E; /* Texte sombre */
+    padding: 10px 20px;
+    font: 12pt "Segoe UI Semibold";
+    border: 1px solid #D0D0D0; /* Bordure grise légère */
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-right: 4px;
+}
+
+QTabBar::tab:selected {
+    background: #FFFFFF;
+    color: #4A5699; /* Bleu violet pour la sélection */
+    border: 1px solid #D0D0D0;
+    border-bottom: 3px solid #4A5699; /* Ligne de sélection bleu violet */
+}
+
+QTabBar::tab:hover {
+    background: #E9F2FA; /* Bleu très clair au survol */
+    color: #4A5699; /* Bleu violet au survol */
+}
+
+/* Style pour les champs de texte */
+QLineEdit {
+    background: #FFFFFF;
+    border: 2px solid #D0D0D0; /* Bordure grise légère */
+    border-radius: 6px;
+    height: 35px;
+    padding: 0 10px;
+    font: 11pt "Segoe UI";
+    color: #2E2E2E; /* Texte sombre */
+    margin: 5px 0;
+}
+
+QLineEdit:focus {
+    border-color: #4A5699; /* Bleu violet au focus */
+}
+
+QLineEdit:disabled {
+    background-color: #F0F0F0;
+    color: #A0A0A0;
+}
+
+/* Style pour les boutons */
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4A5699, stop:1 #4A5699); /* Bleu violet pour le fond du bouton */
+    color: #FFFFFF;
+    height: 40px;
+    padding: 0 20px;
+    font: bold 12pt "Segoe UI";
+    border: none;
+    border-radius: 6px;
+    margin: 10px 0;
+}
+
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6B74B3, stop:1 #4A5699); /* Bleu violet plus clair au survol */
+}
+
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4A5699, stop:1 #37407A); /* Bleu violet plus foncé au clic */
+}
+
+QPushButton:disabled {
+    background-color: #D0D0D0;
+    color: #A0A0A0;
+}
+
+/* Style pour les combobox */
+QComboBox {
+    background-color: #FFFFFF;
+    border: 2px solid #D0D0D0; /* Bordure grise légère */
+    height: 35px;
+    border-radius: 6px;
+    padding: 0 10px;
+    font: 12pt "Segoe UI Semibold";
+    color: #2E2E2E; /* Texte sombre */
+}
+
+QComboBox:hover {
+    border-color: #4A5699; /* Bleu violet au survol */
+}
+
+QComboBox::drop-down {
+    background-color: transparent;
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    border: 1px solid #D0D0D0; /* Bordure grise légère */
+    selection-background-color: #4A5699; /* Bleu violet pour la sélection */
+    selection-color: #FFFFFF;
+}
+
+/* Style pour les tableaux */
+QTableWidget {
+    background-color: #FFFFFF;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E; /* Texte sombre */
+    alternate-background-color: #F7F7F7; /* Gris très clair pour les lignes alternées */
+    gridline-color: #D0D0D0; /* Couleur de la grille grise légère */
+}
+
+QHeaderView {
+    background-color: #C45FA0; /* Rose violet pour l'en-tête */
+    color: #FFFFFF;
+    font: bold 12pt "Segoe UI";
+}
+
+QHeaderView::section {
+    background-color: transparent;
+    border: none;
+    text-align: center;
+}
+
+QHeaderView::section:hover {
+    background-color: #E9F2FA; /* Bleu très clair au survol de l'en-tête, peut-être ajuster */
+}
+
+QTableWidget::item {
+    text-align: center;
+}
+
+QTableWidget::item:hover {
+    background-color: #4A5699; /* Bleu violet au survol des items */
+    color: #FFFFFF;
+}
+
+/* Style pour les widgets de date et heure */
+QDateTimeEdit {
+    border: 2px solid #D0D0D0; /* Bordure grise légère */
+    height: 35px;
+    border-radius: 6px;
+    text-align: center;
+    padding: 0 10px;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E; /* Texte sombre */
+}
+
+/* Style pour le calendrier */
+QCalendarWidget QAbstractItemView {
+    background-color: #FFFFFF;
+    border-radius: 6px;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E; /* Texte sombre */
+}
+
+QCalendarWidget QAbstractItemView::item {
+    padding: 10px;
+}
+
+QCalendarWidget QAbstractItemView::item:selected {
+    background-color: #4A5699; /* Bleu violet pour la sélection du calendrier */
+    color: #FFFFFF;
+}
+
+/* Style pour QLabel */
+QLabel {
+    font: bold 12pt "Segoe UI";
+    color: #2E2E2E; /* Texte sombre */
+    background-color: transparent;
+    padding: 2px 4px;
+}
+
+QLabel:hover {
+    color: #4A5699; /* Bleu violet au survol du label */
+}
+
+/* Style pour QSpinBox */
+QSpinBox {
+    background: #FFFFFF;
+    border: 2px solid #D0D0D0; /* Bordure grise légère */
+    border-radius: 6px;
+    height: 35px;
+    padding: 0 10px;
+    font: 12pt "Segoe UI";
+    color: #2E2E2E; /* Texte sombre */
+}
+
+QSpinBox:focus {
+    border-color: #4A5699; /* Bleu violet au focus */
+}
+
+QSpinBox::up-button, QSpinBox::down-button {
+    background: #4A5699; /* Bleu violet pour les boutons */
+    border: none;
+    width: 20px;
+    height: 15px;
+    border-radius: 4px;
+}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+    background: #6B74B3; /* Bleu violet plus clair au survol */
+}
+
+/* Style pour les sliders */
+QSlider::groove:horizontal {
+    border: 1px solid #D0D0D0; /* Bordure grise légère */
+    height: 8px;
+    background: #F0F0F0; /* Fond gris très clair */
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background: #4A5699; /* Bleu violet pour le handle */
+    border: 2px solid #6B74B3; /* Bordure bleu violet plus clair */
+    width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    margin: -6px 0;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #6B74B3; /* Bleu violet plus clair au survol du handle */
+}
+
+/* Style pour QGroupBox */
+QGroupBox {
+    border: 2px solid #D0D0D0; /* Bordure grise légère */
+    border-radius: 6px;
+    margin-top: 10px;
+    font: bold 12pt "Segoe UI";
+    color: #E5594F; /* Rouge orange pour le titre du GroupBox */
+    padding: 10px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 5px;
+    background-color: #FFFFFF;
+}
+
+/* Style pour QRadioButton */
+QRadioButton {
+    color: #2E2E2E; /* Texte sombre */
+    background-color: transparent;
+    border: none;
+    padding: 0 5px;
+    font-size: 12px;
+}
+
+QRadioButton::indicator {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #4A5699; /* Bleu violet pour l'indicateur */
+    border-radius: 6px;
+    background: #FFFFFF;
+}
+
+QRadioButton::indicator:checked {
+    background: #4A5699; /* Bleu violet coché */
+    border: 2px solid #6B74B3; /* Bordure bleu violet plus clair coché */
+}
+
+/* Style pour la boîte de dialogue */
+QDialog {
+    background-color: #FFFFFF;
+    border: 2px solid #D0D0D0; /* Bordure grise légère */
+    border-radius: 8px;
+}
+
+/* Style pour QScrollArea */
+QScrollArea {
+    background-color: #F7F7F7; /* Gris très clair pour la zone de scroll */
+    border: 1px solid #D0D0D0; /* Bordure grise légère */
+    border-radius: 6px;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: transparent;
+}
+
+/* Style pour la barre de défilement verticale */
+QScrollBar:vertical {
+    background-color: #F0F0F0; /* Fond gris très clair pour la scrollbar */
+    width: 12px;
+    margin: 0;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #4A5699; /* Bleu violet pour le handle */
+    min-height: 30px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #6B74B3; /* Bleu violet plus clair au survol du handle */
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}

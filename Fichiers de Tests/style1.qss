@@ -1,0 +1,219 @@
+/* Base Widget Style */
+QWidget {
+    background-color: #FFFFFF;
+    border-radius: 10px;
+    font: 13px 'Inter';
+    color: #2C3E50;
+    padding: 0px;
+}
+
+/* MessageBox Style */
+QMessageBox {
+    background-color: rgba(255, 255, 255, 0.98);
+    border-radius: 16px;
+    border: 1px solid #E5E9F0;
+}
+
+QMessageBox QLabel#qt_msgbox_label {
+    font: 13pt "Inter";
+    color: #2C3E50;
+    margin: 12px 0;
+}
+
+/* TabWidget Style */
+QTabWidget::pane {
+    border: none;
+    background: #FFFFFF;
+}
+
+QTabBar::tab {
+    background: #F8F9FA;
+    color: #6C7A89;
+    padding: 10px 20px;
+    font: 600 12pt "Inter";
+    height: 40px;
+    border: none;
+    border-radius: 10px 10px 0 0;
+    margin-right: 4px;
+}
+
+QTabBar::tab:selected {
+    background: #FFFFFF;
+    color: #3498DB;
+    border-bottom: 3px solid #3498DB;
+}
+
+QTabBar::tab:hover {
+    background: #EDF2F7;
+    color: #3498DB;
+}
+
+/* LineEdit Style */
+QLineEdit {
+    background: #FFFFFF;
+    border: 2px solid #E2E8F0;
+    border-radius: 10px;
+    height: 40px;
+    padding: 0px 12px;
+    font: 12pt "Inter";
+    color: #2C3E50;
+}
+
+QLineEdit:focus {
+    border-color: #3498DB;
+}
+
+QLineEdit:disabled {
+    background-color: #F7FAFC;
+    color: #A0AEC0;
+}
+
+/* PushButton Style */
+QPushButton {
+    background-color: #3498DB;
+    color: #FFFFFF;
+    height: 42px;
+    padding: 0px 24px;
+    font: 600 12pt "Inter";
+    border: none;
+    border-radius: 10px;
+}
+
+QPushButton:hover {
+    background-color: #2980B9;
+}
+
+QPushButton:pressed {
+    background-color: #2473A6;
+}
+
+QPushButton:disabled {
+    background-color: #E2E8F0;
+    color: #A0AEC0;
+}
+
+/* ComboBox Style */
+QComboBox {
+    background-color: #FFFFFF;
+    border: 2px solid #E2E8F0;
+    height: 40px;
+    border-radius: 10px;
+    padding: 0px 12px;
+    font: 12pt "Inter";
+    color: #2C3E50;
+}
+
+QComboBox:hover {
+    border-color: #3498DB;
+}
+
+QComboBox::drop-down {
+    background-color: transparent;
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    selection-background-color: #3498DB;
+    selection-color: #FFFFFF;
+}
+
+/* TableWidget Style */
+QTableWidget {
+    background-color: #FFFFFF;
+    font: 12pt "Inter";
+    color: #2C3E50;
+    alternate-background-color: #F8FAFC;
+    gridline-color: #E2E8F0;
+}
+
+QHeaderView {
+    background-color: #F8FAFC;
+    color: #2C3E50;
+    font: 600 12pt "Inter";
+    height: 50px;
+}
+
+QHeaderView::section {
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid #E2E8F0;
+    padding: 0 8px;
+}
+
+QHeaderView::section:hover {
+    background-color: #EDF2F7;
+}
+
+/* DateTimeEdit Style */
+QDateTimeEdit {
+    border: 2px solid #E2E8F0;
+    height: 40px;
+    border-radius: 10px;
+    padding: 0px 12px;
+    font: 12pt "Inter";
+    color: #2C3E50;
+}
+
+/* Label Style */
+QLabel {
+    font: 600 12pt "Inter";
+    color: #2C3E50;
+    background-color: transparent;
+    padding: 2px 4px;
+}
+
+/* SpinBox Style */
+QSpinBox {
+    background: #FFFFFF;
+    border: 2px solid #E2E8F0;
+    border-radius: 10px;
+    height: 40px;
+    padding: 0px 12px;
+    font: 12pt "Inter";
+    color: #2C3E50;
+}
+
+/* Slider Style */
+QSlider::groove:horizontal {
+    border: none;
+    height: 6px;
+    background: #E2E8F0;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background: #3498DB;
+    border: 2px solid #FFFFFF;
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    margin: -6px 0;
+}
+
+/* GroupBox Style */
+QGroupBox {
+    border: 2px solid #E2E8F0;
+    border-radius: 10px;
+    margin-top: 12px;
+    font: 600 12pt "Inter";
+    color: #3498DB;
+    padding: 12px;
+}
+
+/* ScrollBar Style */
+QScrollBar:vertical {
+    background-color: #F7FAFC;
+    width: 10px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #CBD5E0;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #A0AEC0;
+}
