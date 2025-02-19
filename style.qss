@@ -50,25 +50,67 @@ QTabBar::tab:hover {
     color: #178E3B; /* Vert moyen au survol */
 }
 
-/* Style pour les champs de texte */
+/* Style de base pour tous les QLineEdit */
 QLineEdit {
     background: #FFFFFF;
-    border: 2px solid #D0D0D0; /* Bordure grise légère */
+    border: 2px solid #D0D0D0;
     border-radius: 6px;
     height: 35px;
     padding: 0 10px;
     font: 11pt "Segoe UI";
-    color: #2E2E2E; /* Texte sombre */
+    color: #2E2E2E;
     margin: 5px 0;
 }
 
 QLineEdit:focus {
-    border-color: #178E3B; /* Vert moyen au focus */
+    border-color: #178E3B;
 }
 
 QLineEdit:disabled {
     background-color: #F0F0F0;
     color: #A0A0A0;
+}
+
+/* Styles spécifiques pour chaque QLineEdit */
+#lineEdit_consommation_par_unite_de_temps_firstRow,
+#lineEdit_tests_par_conditionnment_secondRow,
+#lineEdit_total_calibration_volume,
+#lineEdit_total_loss,
+#lineEdit_qte_total_confirmation_fiveRow,
+#lineEdit_qte_cm_ajustee_sixRow,
+#lineEdit_qte_totale_conditionnement_sixRow,
+#lineEdit_qte_cm_ajustee_sixRow,
+#lineEdit_qte_a_commander_sixRow {
+    background-color: #F7F7F7; /* Fond gris très clair pour ces champs spécifiques */
+    border: 2px solid #178E3B; /* Bordure verte pour les distinguer */
+    font: bold 11pt "Segoe UI"; /* Texte en gras pour plus de visibilité */
+    color: #000000; /* Texte vert pour correspondre à la bordure */
+}
+
+/* Style au focus pour ces champs spécifiques */
+#lineEdit_consommation_par_unite_de_temps_firstRow:focus,
+#lineEdit_tests_par_conditionnment_secondRow:focus,
+#lineEdit_total_calibration_volume:focus,
+#lineEdit_total_loss:focus,
+#lineEdit_qte_total_confirmation_fiveRow:focus,
+#lineEdit_qte_cm_ajustee_sixRow:focus,
+#lineEdit_qte_totale_conditionnement_sixRow,
+#lineEdit_qte_cm_ajustee_sixRow,
+#lineEdit_qte_a_commander_sixRow:focus {
+    border-color: #2FA65B; /* Bordure verte claire au focus */
+    background-color: #E9F2FA; /* Fond bleu très clair au focus */
+}
+
+/* Style pour les champs désactivés */
+#lineEdit_consommation_par_unite_de_temps_firstRow:disabled,
+#lineEdit_tests_par_conditionnment_secondRow:disabled,
+#lineEdit_total_calibration_volume:disabled,
+#lineEdit_total_loss:disabled,
+#lineEdit_qte_total_confirmation_fiveRow:disabled,
+#lineEdit_qte_cm_ajustee_sixRow:disabled,
+#lineEdit_qte_a_commander_sixRow:disabled {
+    background-color: #D0D0D0; /* Fond gris pour les champs désactivés */
+    color: #A0A0A0; /* Texte gris pour les champs désactivés */
 }
 
 /* Style pour les boutons */
@@ -290,7 +332,7 @@ QRadioButton {
     background-color: transparent;
     border: none;
     padding: 0 5px;
-    font-size: 12px;
+    font: bold 12pt "Segoe UI";
 }
 
 QRadioButton::indicator {

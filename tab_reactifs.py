@@ -1,34 +1,23 @@
 # tab_reactifs.py
 import os
-from PySide6.QtCore import QCoreApplication, QSize, QMetaObject, Qt, QThread, Signal
+from PySide6.QtCore import QCoreApplication, QThread, Signal
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
-    QApplication, QRadioButton, QDialog, QComboBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QTabWidget,
-    QMainWindow, QPushButton, QSpinBox, QVBoxLayout, QWidget, QSizePolicy, QSpacerItem, QMessageBox, QCompleter, QScrollArea
+QRadioButton, QDialog, QComboBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, 
+ QPushButton, QSpinBox, QVBoxLayout, QWidget, QSizePolicy, QSpacerItem, QMessageBox, QScrollArea
 )
 from logic_calc import ConsumptionCalculator, VOLUME_UNITS, MASS_UNITS, COUNT_UNITS
-
-# Liste des analyses disponibles
-analyse_liste = [
-    "FSH", "PRL", "170H", "ACHBS", "ACTH", "AGHBS",
-    "ALAT", "ALB", "AMH", "AMYL", "ASAT", "ASLO",
-    "ATG", "ATPO", "AU", "BHCG", "BILL", "BL",
-    "CA125", "CA153", "CA199", "CAL", "CHOL", "CORT 8",
-    "CPK", "CREAT", "CRP", "DE LTA4", "E2", "FER",
-    "FERRI", "FIB", "FNS", "FR", "FT3", "FT4",
-    "GGT", "GLY", "GPP", "GS", "GSC", "HAV",
-    "HBA1C", "HBS", "HCV", "HDLC", "HGPO", "HGPO GSS",
-    "HIVD", "IONO", "LDH", "LH", "LIPA", "MAG",
-    "malb24", "P24", "PAL", "PHOS", "PRG", "PSA TOTAL",
-    "PSAL", "PSATL", "PTH", "RUBG", "RUBM", "SDHEA",
-    "TCK", "TESTO", "TOXG", "TOXM", "TP", "TP INR",
-    "TPHA", "TRIG", "TROP", "TSH", "UREE", "VDRL",
-    "VITB12", "VITB9", "VITD", "VS", "ACR"
-]
+from database import ReactifsDatabase, DatabaseWorkerThread
+import math
+import re
+from report_generator import generate_explanation_report
 
 # Listes des unités
 UNITS = [
     "ml", "L", "mg", "g", "kg", "µl", "boîte", "kit", "sachet", "flacon", "tube", "coffret", "test"
+]
+UNITS_PACKAGING = [
+     "boîte", "kit", "sachet", "flacon", "tube", "coffret"
 ]
 UNITS_CAL_CONT_CONFIRM = [
     "ml", "L", "mg", "g", "kg", "µl", "test"
@@ -69,19 +58,91 @@ class PackagingWorker(QThread):
         except Exception as e:
             result = f"Erreur de calcul : {e}"
         self.calculation_finished.emit(result)
+        
+class QACCalculator(QThread):
+    calculation_finished = Signal(dict)
+    error_occurred = Signal(str)
 
+    def __init__(self, fields, calculator):
+        super().__init__()
+        self.fields = fields
+        self.calculator = calculator
+
+    def run(self):
+        try:
+            # Étape 1 : Validation initiale
+            required_fields = [
+                "consommation", "calibration", "pertes", "confirmation",
+                "stock_actuel", "conditionnement", "livraison"
+            ]
+            
+            for field in required_fields:
+                if field not in self.fields:
+                    raise ValueError(f"Le champ requis '{field}' est manquant")
+                    
+            # Étape 2 : Normalisation des unités
+            target_unit = self.fields['conditionnement']['unit']
+            converted_values = {}
+            
+            for key, data in self.fields.items():
+                if key in ["conditionnement", "livraison"] :
+                    continue  # Déjà dans l'unité cible
+                
+                value = data['value']
+                unit = data['unit']
+                
+                if unit != target_unit:
+                    if self.calculator.are_units_compatible(unit, target_unit):
+                        converted_values[key] = self.calculator.convert_value(value, unit, target_unit)
+                    else:
+                        raise ValueError(f"Conversion impossible entre {unit} et {target_unit} pour le champ {key}")
+                else:
+                    converted_values[key] = value
+            
+            # Étape 3 : Calculs principaux
+            consommation = converted_values['consommation']
+            calibration = converted_values['calibration']
+            pertes = converted_values['pertes']
+            confirmation = converted_values['confirmation']
+            stock_actuel = converted_values['stock_actuel']
+            conditionnement = self.fields['conditionnement']['value']
+            time_period = self.fields['consommation']['period']
+            
+            # Calcul CMA
+            total_consommation = consommation + calibration + pertes + confirmation
+            cmj = total_consommation / time_period
+            
+            # Calcul ROP
+            stock_securite = cmj * self.fields['livraison']['value']  # Exemple de calcul de stock de sécurité
+            rop = total_consommation + stock_securite - stock_actuel
+            
+            # Calcul QAC
+            qac = max(0, math.ceil(rop / conditionnement))
+            
+            # Étape 4 : Résultats
+            results = {
+                'cma': f"{total_consommation:.2f} {target_unit}",
+                'cmj': f"{cmj:.2f} {target_unit} / jour",
+                'rop': f"{rop:.2f} {target_unit}",
+                'qac': f"{qac} {self.fields['conditionnement']['packaging']} / {time_period} jours"
+            }
+            
+            self.calculation_finished.emit(results)
+            
+        except Exception as e:
+            self.error_occurred.emit(str(e))
 
 class GestionReactifs(QWidget):
     def __init__(self):
         super().__init__()
         self.calculator = ConsumptionCalculator()
+        self.database = ReactifsDatabase()
         self.setupUi()
         self.setup_connections()
 
     def setupUi(self):
         self.setObjectName("Widget")
         self.resize(1194, 1000)
-
         # Créer un QScrollArea pour permettre le défilement
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)  # Permet au widget de redimensionner avec le scroll area
@@ -94,29 +155,29 @@ class GestionReactifs(QWidget):
         # Ajouter les widgets à l'interface
         self.horizontalLayout = QHBoxLayout()
 
-        self.groupboxFirstRow = self.create_groupbox("Paramètres Consommation")
+        self.groupboxFirstRow = self.create_groupbox("Gestion des Paramètres de Consommation")
         self.add_first_row_widgets(self.groupboxFirstRow)
         self.horizontalLayout.addWidget(self.groupboxFirstRow)
 
-        self.groupboxSecundRow = self.create_groupbox("Tests par Conditionnement")
+        self.groupboxSecundRow = self.create_groupbox("Tests selon le Type de Conditionnement")
         self.add_second_row_widgets(self.groupboxSecundRow)
         self.horizontalLayout.addWidget(self.groupboxSecundRow)
 
         self.layout_main.addLayout(self.horizontalLayout)
 
-        self.groupeButtons = self.create_groupbox("Paramètres Calibration")
+        self.groupeButtons = self.create_groupbox("Paramètres de calibration des équipements")
         self.add_third_row_widgets(self.groupeButtons)
         self.layout_main.addWidget(self.groupeButtons)
 
-        self.groupboxFourthRow = self.create_groupbox("Paramètres Contrôles")
+        self.groupboxFourthRow = self.create_groupbox("Optimisation des Réactifs - Suivi des Pertes et Utilisation")
         self.add_fourth_row_widgets(self.groupboxFourthRow)
         self.layout_main.addWidget(self.groupboxFourthRow)
 
-        self.groupboxFiveRow = self.create_groupbox("Paramètres Confirmation")
+        self.groupboxFiveRow = self.create_groupbox("Paramètres de Validation et Confirmation")
         self.add_fifth_row_widgets(self.groupboxFiveRow)
         self.layout_main.addWidget(self.groupboxFiveRow)
 
-        self.groupboxSixRow = self.create_groupbox("Résultat")
+        self.groupboxSixRow = self.create_groupbox("Résultats des Tests - Analyse et Rapport")
         self.add_sixth_row_widgets(self.groupboxSixRow)
         self.layout_main.addWidget(self.groupboxSixRow)
 
@@ -124,7 +185,10 @@ class GestionReactifs(QWidget):
 
         self.cancel_button = QPushButton("Annuler", self)
         self.buttons_layout.addWidget(self.cancel_button)
-
+        
+        self.reset_button = QPushButton("Réinitialiser", self)
+        self.buttons_layout.addWidget(self.reset_button)
+        
         self.horizontalSpacer = QSpacerItem(310, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.buttons_layout.addItem(self.horizontalSpacer)
 
@@ -143,6 +207,7 @@ class GestionReactifs(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll_area)
 
+        
     def create_groupbox(self, title: str):
         groupbox = QGroupBox(title, self)  # Utiliser self au lieu de self.centralwidget
         return groupbox
@@ -155,8 +220,8 @@ class GestionReactifs(QWidget):
 
     def add_first_row_widgets(self, groupbox: QGroupBox):
         """
-        Ajoute les widgets pour le groupe "Paramètres Consommation".
-        Inclut un champ QLineEdit pour saisir la quantité totale par conditionnement et son unité.
+        Ajoute les widgets pour le groupe "Gestion des Paramètres de Consommation".
+        Inclut des boutons radio pour choisir le format d'affichage.
         """
         layout = QVBoxLayout(groupbox)
         layout.setSpacing(8)
@@ -198,41 +263,57 @@ class GestionReactifs(QWidget):
         self.lineEdit_qte_par_unite_de_test_firstRow = QLineEdit(groupbox)
         h_layout2.addWidget(self.lineEdit_qte_par_unite_de_test_firstRow)
 
-
         self.comboBox_unite_physique_firstRow = QComboBox(groupbox)
         self.comboBox_unite_physique_firstRow.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout2.addWidget(self.comboBox_unite_physique_firstRow)
-        
+
         self.lbl_qte_total_unite_firstRow = QLabel(groupbox)
         self.lbl_qte_total_unite_firstRow.setText("Qte Totale")
         h_layout2.addWidget(self.lbl_qte_total_unite_firstRow)
+
         self.lineEdit_qte_totale_conditionnement_firstRow = QLineEdit(groupbox)
         self.lineEdit_qte_totale_conditionnement_firstRow.setPlaceholderText("Qte Totale/Conditionnement")
         self.lineEdit_qte_totale_conditionnement_firstRow.setToolTip("Entrez la quantité totale par conditionnement")
         h_layout2.addWidget(self.lineEdit_qte_totale_conditionnement_firstRow)
 
         self.comboBox_unite_qte_totale_conditionnement_firstRow = QComboBox(groupbox)
-        self.comboBox_unite_qte_totale_conditionnement_firstRow.addItems(UNITS_CAL_CONT_CONFIRM)
+        self.comboBox_unite_qte_totale_conditionnement_firstRow.addItems(UNITS_PACKAGING)
         h_layout2.addWidget(self.comboBox_unite_qte_totale_conditionnement_firstRow)
-        
+
         layout.addLayout(h_layout2)
 
-        # 3ème ligne : Consommation par unité de temps
+        # Troisième ligne : Consommation par unité de temps + Boutons radio
         h_layout4 = QHBoxLayout()
         self.lbl_consommation_par_uni_firstRow = QLabel(groupbox)
         self.lbl_consommation_par_uni_firstRow.setText("Consommation U/T")
         h_layout4.addWidget(self.lbl_consommation_par_uni_firstRow)
 
         self.lineEdit_consommation_par_unite_de_temps_firstRow = QLineEdit(groupbox)
+        self.lineEdit_consommation_par_unite_de_temps_firstRow.setObjectName("lineEdit_consommation_par_unite_de_temps_firstRow")
+        self.lineEdit_consommation_par_unite_de_temps_firstRow.setPlaceholderText("consommation par unité de temps (valeur finale)")
         self.lineEdit_consommation_par_unite_de_temps_firstRow.setReadOnly(True)
         h_layout4.addWidget(self.lineEdit_consommation_par_unite_de_temps_firstRow)
 
         self.comboBox_unite_consommation_par_unite_de_temps = QComboBox(groupbox)
-        self.comboBox_unite_consommation_par_unite_de_temps.addItems(UNITS)
+        self.comboBox_unite_consommation_par_unite_de_temps.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout4.addWidget(self.comboBox_unite_consommation_par_unite_de_temps)
 
+        # Ajout des boutons radio pour le choix du format d'affichage
+        self.radio_by_time = QRadioButton("Par unité de temps", groupbox)
+        self.radio_by_packaging = QRadioButton("Par conditionnement", groupbox)
+
+        # Sélectionner une option par défaut
+        self.radio_by_time.setChecked(True)
+
+        # Ajouter les boutons radio dans un layout vertical
+        radio_layout = QVBoxLayout()
+        radio_layout.addWidget(self.radio_by_time)
+        radio_layout.addWidget(self.radio_by_packaging)
+        h_layout4.addLayout(radio_layout)
+
         layout.addLayout(h_layout4)
-        
+
+                    
     def setup_connections(self):
         # Connexions existantes
         self.lineEdit_nbrs_test_firstRow.textChanged.connect(self.update_consumption)
@@ -266,7 +347,10 @@ class GestionReactifs(QWidget):
         self.number_time_spinBox_firstRow.valueChanged.connect(self.update_calibration)  # Ajouté
         self.comboBox_periode_temps_firstRow.currentTextChanged.connect(self.update_calibration)    
         self.comboBox_unite_qte_calibration_thirdRow.currentTextChanged.connect(self.on_calibration_unit_changed)
-
+        
+        # Connexion pour l'évènement de qte totale du conditionnment
+        self.lineEdit_qte_totale_conditionnement_firstRow.textChanged.connect(self.update_consumption_label_and_value)
+        self.comboBox_unite_qte_totale_conditionnement_firstRow.currentTextChanged.connect(self.on_qte_totale_conditionnement_firstRow_change)
         # Connexion pour le changement d'unité de calibration totale
         self.comboBox_qte_totale_calibration_unite.currentTextChanged.connect(self.update_calibration)	
 
@@ -277,44 +361,25 @@ class GestionReactifs(QWidget):
         self.lineEdit_qte_test_refais_confirmation_fiveRow.textChanged.connect(self.update_confirmation)
         self.spinBox_percent_confirmation_test_repete.valueChanged.connect(self.update_confirmation)
         self.comboBox_unite_qte_totale_confirmation_fiveRow.currentTextChanged.connect(self.update_confirmation)
-
-    def update_consumption(self):
-        try:
-            nbr_tests = float(self.lineEdit_nbrs_test_firstRow.text() or "0")
-            time_value = self.number_time_spinBox_firstRow.value()
-            time_unit = self.comboBox_periode_temps_firstRow.currentText()
-            qty_unit = self.comboBox_unite_physique_firstRow.currentText()
-
-            if qty_unit in ["test", "pcs"]:
-                consumption = nbr_tests
-                result = f"{consumption:.2f} {qty_unit}/{time_value} {time_unit}"
-            elif qty_unit in ["boîte", "kit", "sachet", "flacon", "tube", "coffret"]:
-                qty_per_unit_text = self.lineEdit_qte_par_unite_de_test_firstRow.text()
-                if qty_per_unit_text.startswith("Nombre de tests"):
-                    self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
-                    return
-                qty_per_unit = float(qty_per_unit_text or "0")
-                consumption = nbr_tests / qty_per_unit
-                result = f"{consumption:.2f} {qty_unit}/{time_value} {time_unit}"
-            else:
-                qty_per_test = float(self.lineEdit_qte_par_unite_de_test_firstRow.text() or "0")
-                total_qty = nbr_tests * qty_per_test
-                consumption = total_qty 
-
-                target_unit = self.comboBox_unite_consommation_par_unite_de_temps.currentText()
-                if target_unit != qty_unit and target_unit in VOLUME_UNITS + MASS_UNITS and qty_unit in VOLUME_UNITS + MASS_UNITS:
-                    try:
-                        consumption = self.calculator.convert_value(consumption, qty_unit, target_unit)
-                        qty_unit = target_unit
-                    except ValueError:
-                        self.show_error_message("Erreur de conversion")
-                        return
-                result = f"{consumption:.2f} {qty_unit}/{time_value} {time_unit}"
-
-            self.lineEdit_consommation_par_unite_de_temps_firstRow.setText(result)
-        except ValueError:
-            self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
-
+        
+        # Connexion pour les radios buttons 
+        self.radio_by_time.toggled.connect(self.on_radio_button_changed)
+        self.radio_by_packaging.toggled.connect(self.on_radio_button_changed)
+        
+        # Connexions pour les boutons calculer et génére le rapport pdf
+        self.print_button_result.clicked.connect(self.generate_explanation_report)
+        #Connexion pour le dernier groupe des boutons
+        self.reset_button.clicked.connect(self.reset_fields)
+        
+        
+    def on_radio_button_changed(self):
+        """
+        Appelée lorsque l'état des boutons radio change.
+        """
+        if self.radio_by_time.isChecked():
+            self.update_consumption()  # Appeler update_consumption uniquement pour "Par unité de temps"
+        self.update_consumption_label_and_value()
+        
     def on_qty_per_unit_changed(self, new_unit: str):
         old_unit = self.comboBox_qte_par_unite_secondRow.currentText()
         qty_text = self.lineEdit_qte_par_unite_secondRow.text()
@@ -362,7 +427,98 @@ class GestionReactifs(QWidget):
                 self.lineEdit_qte_totale_par_conditionnment_secondRow.setText(total_qty_text)  # Pas de conversion pour les unités non massiques/volumiques
         else:
             self.lineEdit_qte_totale_par_conditionnment_secondRow.clear()
+            
+    def on_qte_totale_conditionnement_firstRow_change(self, unit):
+        """Gère le changement d'unité dans le combobox des unités physiques"""
+        if unit in ["boîte", "kit", "sachet", "coffret"]:
+            # Définir les combobox sur "test"
+            self.comboBox_unite_physique_firstRow.setCurrentText("test")
+            self.comboBox_unite_consommation_par_unite_de_temps.setCurrentText("test")
+            # Définir lineEdit_qte_par_unite_de_test_firstRow à 1
+            self.lineEdit_qte_par_unite_de_test_firstRow.setText("1")
+            self.lineEdit_qte_par_unite_de_test_firstRow.setReadOnly(True)
+            # Vider le champ de consommation
+            self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()            
+        elif unit in ["flacon", "tube"]:
+            # Définir les unités spécifiques pour flacon et tube
+            self.comboBox_unite_consommation_par_unite_de_temps.setCurrentText("ml")
+            self.comboBox_unite_physique_firstRow.setCurrentText("µl")
+            # Vider le champ de consommation
+            self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+            # Rendre le champ éditable
+            self.lineEdit_qte_par_unite_de_test_firstRow.setReadOnly(False)
+        else:
+            # Pour les autres unités, rendre le champ éditable
+            self.lineEdit_qte_par_unite_de_test_firstRow.setReadOnly(False)   
+            
+    def update_consumption_label_and_value(self):
+        """
+        Met à jour le champ de consommation en fonction du format sélectionné via les boutons radio.
+        Vérifie également si les champs requis sont remplis et normalise les unités si nécessaire.
+        """
+        try:
+            # Récupérer les valeurs des champs
+            qty_per_test_text = self.lineEdit_qte_par_unite_de_test_firstRow.text()
+            nbr_tests_text = self.lineEdit_nbrs_test_firstRow.text()
+            total_qty_text = self.lineEdit_qte_totale_conditionnement_firstRow.text()
 
+            # Vérifier si les champs de base sont remplis
+            if not (qty_per_test_text and nbr_tests_text):
+                self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+                return
+
+            # Convertir les valeurs en float
+            qty_per_test = float(qty_per_test_text)
+            nbr_tests = float(nbr_tests_text)
+
+            # Récupérer les unités
+            qty_unit = self.comboBox_unite_physique_firstRow.currentText()
+            consumption_unit = self.comboBox_unite_consommation_par_unite_de_temps.currentText()
+            packaging_unit = self.comboBox_unite_qte_totale_conditionnement_firstRow.currentText()
+            time_value = self.number_time_spinBox_firstRow.value()
+            time_unit = self.comboBox_periode_temps_firstRow.currentText()
+
+            # Normaliser les unités si nécessaire
+            if qty_unit in ["mg", "g", "kg", "ml", "L", "µl"] and consumption_unit in ["mg", "g", "kg", "ml", "L", "µl"]:
+                try:
+                    qty_per_test = self.calculator.convert_value(qty_per_test, qty_unit, consumption_unit)
+                except ValueError:
+                    self.show_error_message(f"Conversion impossible entre {qty_unit} et {consumption_unit}")
+                    return
+
+            # Calculer la consommation initiale
+            consumption = (qty_per_test * nbr_tests)
+
+            # Vérifier l'état des boutons radio
+            if self.radio_by_time.isChecked():
+                # Format : Par unité de temps (ex: 250 ml / 20 jours)
+                result = f"{consumption:.2f} {consumption_unit} / {time_value} {time_unit}"
+                self.lineEdit_consommation_par_unite_de_temps_firstRow.setText(result)
+
+            elif self.radio_by_packaging.isChecked():
+                # Vérifier si le champ de quantité totale est rempli
+                if not total_qty_text:
+                    self.show_error_message("Le champ 'Qte Totale/Conditionnement' ne peut pas être vide.")
+                    self.lineEdit_qte_totale_conditionnement_firstRow.setFocus()  # Placer le focus sur le champ vide
+                    self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+                    return
+
+                total_qty = float(total_qty_text)
+                if total_qty <= 0:
+                    self.show_error_message("La quantité totale doit être supérieure à zéro.")
+                    self.lineEdit_qte_totale_conditionnement_firstRow.setFocus()
+                    self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+                    return
+
+                # Format : Par conditionnement (ex: 5 boîtes / 20 jours)
+                consumption_per_packaging = consumption / total_qty
+                result = f"{consumption_per_packaging:.2f} {packaging_unit} / {time_value} {time_unit}"
+                self.lineEdit_consommation_par_unite_de_temps_firstRow.setText(result)
+
+        except ValueError:
+            self.show_error_message("Veuillez saisir des valeurs numériques valides.")
+            self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+            
     def calculate_tests_per_container(self):
         try:
             qty_per_test_text = self.lineEdit_qte_par_unite_secondRow.text()
@@ -381,6 +537,13 @@ class GestionReactifs(QWidget):
             qty_unit = self.comboBox_qte_par_unite_secondRow.currentText()
             total_qty_unit = self.comboBox_unite_qte_totale_par_conditionnement.currentText()
             dead_volume_unit = self.comboBox_unite_volume_mort_secondRow.currentText()
+
+            # Vérification si toutes les unités sont en "test"
+            if qty_unit == "test" and total_qty_unit == "test" and dead_volume_unit == "test":
+                estimated_tests = total_qty - dead_volume
+                self.lineEdit_tests_par_conditionnment_secondRow.setStyleSheet("color: black;")
+                self.lineEdit_tests_par_conditionnment_secondRow.setText(f"{int(estimated_tests)} tests")
+                return
 
             # Vérification des unités et conversions comme avant...
             all_units = set(VOLUME_UNITS + MASS_UNITS)
@@ -433,6 +596,7 @@ class GestionReactifs(QWidget):
             self.lineEdit_tests_par_conditionnment_secondRow.setText(f"Erreur inattendue : {e}")
 
 
+
     def validate_input(self, input_text: str, field_name: str) -> float | None:
         try:
             value = float(input_text)
@@ -457,7 +621,7 @@ class GestionReactifs(QWidget):
         h_layout.addWidget(self.lineEdit_qte_par_unite_secondRow)
 
         self.comboBox_qte_par_unite_secondRow = QComboBox(groupbox)
-        self.comboBox_qte_par_unite_secondRow.addItems(UNITS)
+        self.comboBox_qte_par_unite_secondRow.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout.addWidget(self.comboBox_qte_par_unite_secondRow)
 
         self.lbl_volume_mortsecondRow = QLabel(groupbox)
@@ -468,7 +632,7 @@ class GestionReactifs(QWidget):
         h_layout.addWidget(self.lineEdit_qte_volume_mor_secondRow)
 
         self.comboBox_unite_volume_mort_secondRow = QComboBox(groupbox)
-        self.comboBox_unite_volume_mort_secondRow.addItems(UNITS)
+        self.comboBox_unite_volume_mort_secondRow.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout.addWidget(self.comboBox_unite_volume_mort_secondRow)
 
         layout.addLayout(h_layout)
@@ -494,14 +658,17 @@ class GestionReactifs(QWidget):
         h_layout2.addWidget(self.lineEdit_qte_totale_par_conditionnment_secondRow)
 
         self.comboBox_unite_qte_totale_par_conditionnement = QComboBox(groupbox)
-        self.comboBox_unite_qte_totale_par_conditionnement.addItems(UNITS)
+        self.comboBox_unite_qte_totale_par_conditionnement.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout2.addWidget(self.comboBox_unite_qte_totale_par_conditionnement)
 
         self.lineEdit_tests_par_conditionnment_secondRow = QLineEdit(groupbox)
+        self.lineEdit_tests_par_conditionnment_secondRow.setPlaceholderText("Nombre de tests par conditionnement (valeur clé)")
+        self.lineEdit_tests_par_conditionnment_secondRow.setObjectName("lineEdit_tests_par_conditionnment_secondRow")
         self.lineEdit_tests_par_conditionnment_secondRow.setPlaceholderText("Tests/Conditionnment")	
         h_layout2.addWidget(self.lineEdit_tests_par_conditionnment_secondRow)
 
         layout.addLayout(h_layout2)
+        
     def add_third_row_widgets(self, groupbox: QGroupBox):
         layout = QVBoxLayout(groupbox)
 
@@ -553,6 +720,8 @@ class GestionReactifs(QWidget):
         h_layout2.addWidget(self.lbl_total_calibration_volume)
 
         self.lineEdit_total_calibration_volume = QLineEdit(groupbox)
+        self.lineEdit_total_calibration_volume.setPlaceholderText("Volume total calibré (donnée essentielle)")
+        self.lineEdit_total_calibration_volume.setObjectName("lineEdit_total_calibration_volume")
         self.lineEdit_total_calibration_volume.setReadOnly(True)  # Champ en lecture seule
         h_layout2.addWidget(self.lineEdit_total_calibration_volume)
 
@@ -564,7 +733,22 @@ class GestionReactifs(QWidget):
         h_layout2.setStretch(3, 2)
         h_layout2.setStretch(4, 1)	
         layout.addLayout(h_layout2)
-
+        
+    # Connexion pour le changement d'unité dans comboBox_qte_totale_calibration_unite
+        self.comboBox_qte_totale_calibration_unite.currentTextChanged.connect(self.on_total_calibration_unit_changed_to_test)
+        
+    def on_total_calibration_unit_changed_to_test(self, unit):
+        """
+        Méthode appelée lorsque l'unité dans comboBox_qte_totale_calibration_unite change.
+        Si l'unité est 'test', met à jour comboBox_unite_qte_calibration_thirdRow et lineEdit_qte_calibration_thirdRow.
+        """
+        if unit == "test":
+            # Mettre à jour comboBox_unite_qte_calibration_thirdRow avec 'test'
+            self.comboBox_unite_qte_calibration_thirdRow.setCurrentText("test")
+            
+            # Remplir lineEdit_qte_calibration_thirdRow avec '1'
+            self.lineEdit_qte_calibration_thirdRow.setText("1") 
+                   
     def add_fourth_row_widgets(self, groupbox: QGroupBox):
         """
         Ajoute les widgets pour le groupe "Facteurs de Pertes Critiques".
@@ -576,7 +760,7 @@ class GestionReactifs(QWidget):
         layout = QVBoxLayout(groupbox)
 
         # Titre du groupe
-        groupbox.setTitle("Facteurs de Pertes Critiques")
+        groupbox.setTitle("Analyse des Pertes et Utilisation (Facteurs de Pertes Critiques)")
 
         # Première ligne : Quantité totale par conditionnement
         h_layout_total_qty = QHBoxLayout()
@@ -584,10 +768,11 @@ class GestionReactifs(QWidget):
         h_layout_total_qty.addWidget(self.lbl_total_qty)
 
         self.lineEdit_total_qty = QLineEdit(groupbox)
+        self.lineEdit_total_qty.setObjectName("lineEdit_total_qty")
         h_layout_total_qty.addWidget(self.lineEdit_total_qty)
 
         self.comboBox_total_qty_unit = QComboBox(groupbox)
-        self.comboBox_total_qty_unit.addItems(["ml", "mg", "tests"])
+        self.comboBox_total_qty_unit.addItems(["ml", "mg", "test"])
         h_layout_total_qty.addWidget(self.comboBox_total_qty_unit)
 
         layout.addLayout(h_layout_total_qty)
@@ -627,11 +812,13 @@ class GestionReactifs(QWidget):
         h_layout_loss.addWidget(self.lbl_total_loss)
 
         self.lineEdit_total_loss = QLineEdit(groupbox)
+        self.lineEdit_total_loss.setPlaceholderText("Pertes totales enregistrées (à surveiller)")
+        self.lineEdit_total_loss.setObjectName("lineEdit_total_loss")
         self.lineEdit_total_loss.setReadOnly(True)
         h_layout_loss.addWidget(self.lineEdit_total_loss)
 
         self.comboBox_loss_unit = QComboBox(groupbox)
-        self.comboBox_loss_unit.addItems(["ml", "mg", "tests"])
+        self.comboBox_loss_unit.addItems(["ml", "mg", "test"])
         h_layout_loss.addWidget(self.comboBox_loss_unit)
 
         layout.addLayout(h_layout_loss)
@@ -643,8 +830,19 @@ class GestionReactifs(QWidget):
         self.spinBox_degradation_loss.valueChanged.connect(self.calculate_total_loss)
         self.comboBox_total_qty_unit.currentTextChanged.connect(self.calculate_total_loss)
         self.comboBox_loss_unit.currentTextChanged.connect(self.calculate_total_loss)
+        # Connexion pour le changement d'unité dans comboBox_loss_unit
+        self.comboBox_loss_unit.currentTextChanged.connect(self.on_loss_unit_changed_to_test)
 
-
+    def on_loss_unit_changed_to_test(self, unit):
+        """
+        Méthode appelée lorsque l'unité dans comboBox_loss_unit change.
+        Si l'unité est 'test', met à jour comboBox_total_qty_unit et lineEdit_total_loss.
+        """
+        if unit == "test":
+            # Mettre à jour comboBox_total_qty_unit avec 'test'
+            self.comboBox_total_qty_unit.setCurrentText("test")
+            
+            
     def add_fifth_row_widgets(self, groupbox: QGroupBox):
         layout = QVBoxLayout(groupbox)
 
@@ -658,7 +856,7 @@ class GestionReactifs(QWidget):
         h_layout.addWidget(self.lineEdit_qte_test_refais_confirmation_fiveRow)
 
         self.comboBox_unite_qte_test_refais_confirmation_fiveRow = QComboBox(groupbox)
-        self.comboBox_unite_qte_test_refais_confirmation_fiveRow.addItems(["ml", "L", "mg", "g", "kg", "µl", "test"])
+        self.comboBox_unite_qte_test_refais_confirmation_fiveRow.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout.addWidget(self.comboBox_unite_qte_test_refais_confirmation_fiveRow)
 
         self.lbl_percent_tests_repete_fiveRow = QLabel(groupbox)
@@ -681,11 +879,13 @@ class GestionReactifs(QWidget):
         h_layout2.addWidget(self.lbl_qte_total_confirmation_fiveRow)
 
         self.lineEdit_qte_total_confirmation_fiveRow = QLineEdit(groupbox)
+        self.lineEdit_qte_total_confirmation_fiveRow.setPlaceholderText("Quantité totale confirmée (vérifiez ici)")
+        self.lineEdit_qte_total_confirmation_fiveRow.setObjectName("lineEdit_qte_total_confirmation_fiveRow")
         self.lineEdit_qte_total_confirmation_fiveRow.setReadOnly(True)  # Lecture seule
         h_layout2.addWidget(self.lineEdit_qte_total_confirmation_fiveRow)
 
         self.comboBox_unite_qte_totale_confirmation_fiveRow = QComboBox(groupbox)
-        self.comboBox_unite_qte_totale_confirmation_fiveRow.addItems(["ml", "L", "mg", "g", "kg", "µl", "test"])
+        self.comboBox_unite_qte_totale_confirmation_fiveRow.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout2.addWidget(self.comboBox_unite_qte_totale_confirmation_fiveRow)
 
         h_layout2.setStretch(0, 0)
@@ -693,8 +893,21 @@ class GestionReactifs(QWidget):
         h_layout2.setStretch(2, 1)
         layout.addLayout(h_layout2)
 
-        # Suppression de la ligne de dilution ici
-
+        # Connexion pour le changement d'unité dans comboBox_total_qty_unit
+        self.comboBox_unite_qte_totale_confirmation_fiveRow.currentTextChanged.connect(self.on_total_confirmation_qty_unit_changed)
+        
+    def on_total_confirmation_qty_unit_changed(self, unit):
+        """
+        Méthode appelée lorsque l'unité dans comboBox_total_qty_unit change.
+        Si l'unité est 'test', met à jour comboBox_loss_unit et lineEdit_total_loss.
+        """
+        if unit == "test":
+            # Mettre à jour comboBox_loss_unit avec 'test'
+            self.comboBox_unite_qte_test_refais_confirmation_fiveRow.setCurrentText("test")
+            
+            # Remplir lineEdit_total_loss avec '1'
+            self.lineEdit_qte_test_refais_confirmation_fiveRow.setText("1")
+            self.lineEdit_qte_test_refais_confirmation_fiveRow.setReadOnly()
     def show_error_message(self, message):
         """Affiche un message d'erreur dans une boîte de dialogue."""
         msg = QMessageBox()
@@ -712,19 +925,23 @@ class GestionReactifs(QWidget):
         self.lbl_jours_analyse_sixRow = QLabel(groupbox)
         self.lbl_jours_analyse_sixRow.setText("Analyse")
         h_layout.addWidget(self.lbl_jours_analyse_sixRow)
-        
+               
         # Création et configuration de la QComboBox
         self.comboBox_analyse_sixRow = QComboBox(groupbox)
-        self.comboBox_analyse_sixRow.addItems(analyse_liste)
         self.comboBox_analyse_sixRow.setEditable(True)  # Correction : rendre la QComboBox éditable
-        
-        # Ajouter un QCompleter pour le filtrage dynamique
-        completer = QCompleter(analyse_liste, self.comboBox_analyse_sixRow)
-        completer.setCaseSensitivity(Qt.CaseInsensitive)  # Ignorer la casse
-        completer.setFilterMode(Qt.MatchContains)  # Filtrer en fonction du texte saisi
-        self.comboBox_analyse_sixRow.setCompleter(completer)
-        
+        self.populate_analytes_combo() 
         h_layout.addWidget(self.comboBox_analyse_sixRow)
+        
+        self.lbl_qte_totale_conditionnement_sixRow = QLabel(groupbox)
+        self.lbl_qte_totale_conditionnement_sixRow.setText("Qte Totale")
+        h_layout.addWidget(self.lbl_qte_totale_conditionnement_sixRow)
+        self.lineEdit_qte_totale_conditionnement_sixRow = QLineEdit(groupbox)
+        self.lineEdit_qte_totale_conditionnement_sixRow.setObjectName("lineEdit_qte_totale_conditionnement_sixRow")
+        self.lineEdit_qte_totale_conditionnement_sixRow.setPlaceholderText("Qte Totale/Conditionnement")
+        h_layout.addWidget(self.lineEdit_qte_totale_conditionnement_sixRow)
+        self.comboBox_qte_totale_conditionnement_unit_sixRow = QComboBox(groupbox)
+        self.comboBox_qte_totale_conditionnement_unit_sixRow.addItems(UNITS_CAL_CONT_CONFIRM)  # Unités massiques/volumiques uniquement
+        h_layout.addWidget(self.comboBox_qte_totale_conditionnement_unit_sixRow)
         
         self.lbl_jours_livraison_sixRow = QLabel(groupbox)
         self.lbl_jours_livraison_sixRow.setText("D.Livraison")
@@ -741,7 +958,7 @@ class GestionReactifs(QWidget):
         self.lineEdit_nbr_test_stock_actuel_sixRow = QLineEdit(groupbox)
         h_layout.addWidget(self.lineEdit_nbr_test_stock_actuel_sixRow)
         self.comboBox_unite_stoc_test_sixRow = QComboBox(groupbox)
-        self.comboBox_unite_stoc_test_sixRow.addItems(UNITS)
+        self.comboBox_unite_stoc_test_sixRow.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout.addWidget(self.comboBox_unite_stoc_test_sixRow)
         
         h_layout.setStretch(1, 2)
@@ -750,42 +967,57 @@ class GestionReactifs(QWidget):
         # Deuxième ligne
         h_layout2 = QHBoxLayout()
         self.lbl_cm_ajustee_sixRow = QLabel(groupbox)
-        self.lbl_cm_ajustee_sixRow.setText("CM ajustée")
+        self.lbl_cm_ajustee_sixRow.setText("CT ajustée")
         h_layout2.addWidget(self.lbl_cm_ajustee_sixRow)
         self.lineEdit_qte_cm_ajustee_sixRow = QLineEdit(groupbox)
+        self.lineEdit_qte_cm_ajustee_sixRow.setObjectName("lineEdit_qte_cm_ajustee_sixRow")
+        self.lineEdit_qte_cm_ajustee_sixRow.setPlaceholderText("Consommation Totale Ajustée")
         h_layout2.addWidget(self.lineEdit_qte_cm_ajustee_sixRow)
         self.comboBo_unite_cm_ajustee_sixRow = QComboBox(groupbox)
-        self.comboBo_unite_cm_ajustee_sixRow.addItems(UNITS)
+        self.comboBo_unite_cm_ajustee_sixRow.addItems(UNITS_CAL_CONT_CONFIRM)
         h_layout2.addWidget(self.comboBo_unite_cm_ajustee_sixRow)
         
-        self.horizontalSpacer_3 = QSpacerItem(34, 21, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        h_layout2.addItem(self.horizontalSpacer_3)
+        # Nouveau champ : Consommation Moyenne Journalière (CMA)
+        self.lbl_cma_sixRow = QLabel(groupbox)
+        self.lbl_cma_sixRow.setText("CMA / Période")
+        h_layout2.addWidget(self.lbl_cma_sixRow)
+        self.lineEdit_cma_sixRow = QLineEdit(groupbox)
+        self.lineEdit_cma_sixRow.setPlaceholderText("Consommation Moyenne Journalière")
+        self.lineEdit_cma_sixRow.setObjectName("lineEdit_cma_sixRow")
+        self.lineEdit_cma_sixRow.setReadOnly(True)  # Lecture seule
+        h_layout2.addWidget(self.lineEdit_cma_sixRow)
+        self.comboBox_cma_unit_sixRow = QComboBox(groupbox)
+        self.comboBox_cma_unit_sixRow.addItems(UNITS_CAL_CONT_CONFIRM)  # Unités massiques/volumiques uniquement
+        h_layout2.addWidget(self.comboBox_cma_unit_sixRow)
         
         self.lbl_qte_a_commander_sixRow = QLabel(groupbox)
         self.lbl_qte_a_commander_sixRow.setText("Q.A.C")
         h_layout2.addWidget(self.lbl_qte_a_commander_sixRow)
         self.lineEdit_qte_a_commander_sixRow = QLineEdit(groupbox)
+        self.lineEdit_qte_a_commander_sixRow.setPlaceholderText("Quantité à commander (action requise)")
+        self.lineEdit_qte_a_commander_sixRow.setObjectName("lineEdit_qte_a_commander_sixRow")
         h_layout2.addWidget(self.lineEdit_qte_a_commander_sixRow)
-        self.comboBox_unite_qt_a_commander_sixRow = QComboBox(groupbox)
-        self.comboBox_unite_qt_a_commander_sixRow.addItems(UNITS)
-        h_layout2.addWidget(self.comboBox_unite_qt_a_commander_sixRow)
+        self.comboBox_qte_a_commander_unit_sixRow = QComboBox(groupbox)
+        self.comboBox_qte_a_commander_unit_sixRow.addItems(UNITS_PACKAGING)  # Types de conditionnements uniquement
+        h_layout2.addWidget(self.comboBox_qte_a_commander_unit_sixRow)
         
         layout.addLayout(h_layout2)
-
-
-    # def load_stylesheet(self, MainWindow):
-    #     try:
-    #         style_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.qss")
-    #         with open(style_path, "r", encoding="utf-8") as f:
-    #             MainWindow.setStyleSheet(f.read())
-    #     except FileNotFoundError:
-    #         self.show_error_message("Erreur : fichier 'style.qss' introuvable.")
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", "MainWindow", None))
         self.cancel_button.setText(QCoreApplication.translate("MainWindow", "Annuler", None))
         self.calculate_button.setText(QCoreApplication.translate("MainWindow", "Calculer", None))
-
+        
+         
+                   
+    def populate_analytes_combo(self):
+        try:
+            analytes = self.database.get_all_analytes()
+            self.comboBox_analyse_sixRow.clear()
+            self.comboBox_analyse_sixRow.addItems([analyte for analyte in analytes])
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Impossible de charger les analytes : {e}") 
+               
     def calculate_total_loss(self):
         """
         Calcule la quantité perdue en fonction des pourcentages des facteurs critiques.
@@ -865,41 +1097,51 @@ class GestionReactifs(QWidget):
     def on_consumption_unit_changed(self, new_unit):
         """
         Gère le changement d'unité dans le combobox de consommation.
-        Met à jour les champs en fonction du type d'unité sélectionné.
+        Affiche un QDialog si nécessaire et met à jour les champs en conséquence.
         """
-        # Vérifier si l'unité sélectionnée est un contenant (tube, flacon)
-        if new_unit in ["tube", "flacon"]:
-            # Ouvrir un dialogue pour saisir les paramètres spécifiques aux contenants
-            dialog_result = self.open_container_dialog(new_unit)
-            if dialog_result:
-                qty_per_test, total_qty, unit = dialog_result
+        if new_unit == "test":
+            self.comboBox_unite_physique_firstRow.setCurrentText('test')
 
-                # Mettre à jour les champs correspondants
-                self.comboBox_unite_qte_totale_conditionnement_firstRow.setCurrentText(unit)  # Unité totale
-                self.lineEdit_qte_totale_conditionnement_firstRow.setText(str(total_qty))  # Quantité totale
-                self.lineEdit_qte_par_unite_de_test_firstRow.setText(str(qty_per_test))  # Quantité par test
-                self.comboBox_unite_physique_firstRow.setCurrentText(unit)  # Unité physique
-                self.comboBox_unite_consommation_par_unite_de_temps.setCurrentText(unit)  # Unité de consommation
+        # Récupérer la valeur actuelle de la consommation
+        consumption_text = self.lineEdit_consommation_par_unite_de_temps_firstRow.text()
+        if not consumption_text:
+            return
 
-                # Recalculer la consommation
-                self.update_consumption()
+        try:
+            # Extraire la valeur numérique et l'unité actuelle
+            value_part, time_part = consumption_text.split('/')
+            value_parts = value_part.split()
 
-        # Vérifier si l'unité sélectionnée est un conditionnement (boîte, coffret, sachet, kit)
-        elif new_unit in ["boîte", "coffret", "sachet", "kit"]:
-            # Ouvrir un dialogue pour saisir le nombre total de tests
-            dialog_result = self.open_packaging_dialog(new_unit)
-            if dialog_result:
-                total_tests = dialog_result
+            # Vérifier que la valeur contient bien une unité
+            if len(value_parts) < 2:
+                return  # Évite une erreur si la valeur est mal formatée
 
-                # Mettre à jour les champs correspondants
-                self.comboBox_unite_consommation_par_unite_de_temps.setCurrentText("test")  # Unité de consommation
-                self.comboBox_unite_qte_totale_conditionnement_firstRow.setCurrentText("test")  # Unité totale
-                self.lineEdit_qte_par_unite_de_test_firstRow.setText("1")  # Quantité par test
-                self.comboBox_unite_physique_firstRow.setCurrentText("test")  # Unité physique
-                self.lineEdit_qte_totale_conditionnement_firstRow.setText(str(total_tests))  # Nombre total de tests
+            value = float(value_parts[0])
+            old_unit = value_parts[1]
 
-                # Recalculer la consommation
-                self.update_consumption()
+            # Vérifier si l'unité a vraiment changé
+            if old_unit == new_unit:
+                return  # Rien à faire si l'unité reste la même
+
+            # Vérifier si les unités sont compatibles
+            if self.calculator.are_units_compatible(old_unit, new_unit):
+                # Convertir la valeur
+                converted_value = self.calculator.convert_value(value, old_unit, new_unit)
+                # Mettre à jour le champ avec la nouvelle valeur et unité
+                self.lineEdit_consommation_par_unite_de_temps_firstRow.setText(
+                    f"{converted_value:.2f} {new_unit}/{time_part}"
+                )
+            else:
+                # Si la conversion est impossible, ne pas afficher d'erreur bloquante
+                self.lineEdit_consommation_par_unite_de_temps_firstRow.setText(f"0.00 {new_unit}/{time_part}")
+                self.show_error_message(f"Aucune conversion disponible entre {old_unit} et {new_unit}, la valeur a été réinitialisée.")
+                self.comboBox_unite_consommation_par_unite_de_temps.setCurrentText(new_unit)
+
+        except (ValueError, IndexError) as e:
+            # En cas d'erreur, afficher un message et réinitialiser la valeur
+            self.show_error_message(f"Erreur lors de la conversion : {e}")
+            self.lineEdit_consommation_par_unite_de_temps_firstRow.setText(f"0.00 {new_unit}/{time_part}")
+
                 
     def open_container_dialog(self, unit):
         """
@@ -977,50 +1219,44 @@ class GestionReactifs(QWidget):
         return None
     
     def update_consumption(self):
-        """
-        Met à jour le champ lineEdit_consommation_par_unite_de_temps_firstRow avec le résultat du calcul.
-        Affiche la consommation au format spécifié (ex: 2 flacons/20 jours ou 3.5 tubes/20 jours).
-        """
+        
+        self.lbl_consommation_par_uni_firstRow.setText("Consommation U/T")
         try:
-            # Récupérer les paramètres nécessaires
             nbr_tests = float(self.lineEdit_nbrs_test_firstRow.text() or "0")
             time_value = self.number_time_spinBox_firstRow.value()
             time_unit = self.comboBox_periode_temps_firstRow.currentText()
-            qty_per_test = float(self.lineEdit_qte_par_unite_de_test_firstRow.text() or "0")
-            total_qty = float(self.lineEdit_qte_totale_conditionnement_firstRow.text() or "0")
-            consumption_unit = self.comboBox_unite_consommation_par_unite_de_temps.currentText()
+            qty_unit = self.comboBox_unite_physique_firstRow.currentText()
 
-            # Calculer la consommation
-            if consumption_unit in ["tube", "flacon"]:
-                # Pour les contenants
-                if qty_per_test > 0 and total_qty > 0:
-                    nbr_containers = (nbr_tests * qty_per_test) / total_qty
-                    result = f"{nbr_containers:.2f} {consumption_unit}/{time_value} {time_unit}"
-                else:
-                    result = "Erreur : Quantité par test et volume total doivent être supérieurs à zéro."
-            elif consumption_unit in ["boîte", "coffret", "sachet", "kit"]:
-                # Pour les conditionnements
-                if total_qty > 0:
-                    nbr_packagings = nbr_tests / total_qty
-                    result = f"{nbr_packagings:.2f} {consumption_unit}/{time_value} {time_unit}"
-                else:
-                    result = "Erreur : Le nombre total de tests doit être supérieur à zéro."
+            if qty_unit in ["test", "pcs"]:
+                consumption = nbr_tests
+                result = f"{consumption:.2f} {qty_unit}/{time_value} {time_unit}"
+            elif qty_unit in ["boîte", "kit", "sachet", "flacon", "tube", "coffret"]:
+                qty_per_unit_text = self.lineEdit_qte_par_unite_de_test_firstRow.text()
+                if qty_per_unit_text.startswith("Nombre de tests"):
+                    self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+                    return
+                qty_per_unit = float(qty_per_unit_text or "0")
+                consumption = nbr_tests / qty_per_unit
+                result = f"{consumption:.2f} {qty_unit}/{time_value} {time_unit}"
             else:
-                # Pour les autres unités
-                consumption = nbr_tests * qty_per_test
+                qty_per_test = float(self.lineEdit_qte_par_unite_de_test_firstRow.text() or "0")
+                total_qty = nbr_tests * qty_per_test
+                consumption = total_qty 
+
                 target_unit = self.comboBox_unite_consommation_par_unite_de_temps.currentText()
-                if target_unit != consumption_unit and target_unit in VOLUME_UNITS + MASS_UNITS:
+                if target_unit != qty_unit and target_unit in VOLUME_UNITS + MASS_UNITS and qty_unit in VOLUME_UNITS + MASS_UNITS:
                     try:
-                        consumption = self.calculator.convert_value(consumption, consumption_unit, target_unit)
+                        consumption = self.calculator.convert_value(consumption, qty_unit, target_unit)
+                        qty_unit = target_unit
                     except ValueError:
                         self.show_error_message("Erreur de conversion")
                         return
-                result = f"{consumption:.2f} {target_unit}/{time_value} {time_unit}"
+                result = f"{consumption:.2f} {qty_unit}/{time_value} {time_unit}"
 
-            # Afficher le résultat
             self.lineEdit_consommation_par_unite_de_temps_firstRow.setText(result)
         except ValueError:
-            self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()    
+            self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+          
     def update_packaging_fields(self, unit, dialog, is_container=False):
         """
         Met à jour les champs après la saisie dans le QDialog.
@@ -1359,142 +1595,295 @@ class GestionReactifs(QWidget):
             nbr_tests = float(nbr_tests_text)
             qty_per_test = float(qty_per_test_text)
 
-            # Calculer la quantité totale de tests perdus
-            total_lost_volume = self.calculator.calculate_confirmation_loss(
-                nbr_tests, time_value, time_unit, confirmation_percentage, qty_per_test, qty_unit, display_unit
-            )
+            # Convertir la période de temps en jours
+            time_factors = {
+                'Jours': 1,
+                'Semaine': 7,
+                'Mois': 30
+            }
+            total_days = time_value * time_factors.get(time_unit, 1)
 
-            if total_lost_volume is not None:
-                # Afficher le résultat
-                self.lineEdit_qte_total_confirmation_fiveRow.setText(f"{total_lost_volume:.2f} {display_unit}")
-            else:
-                self.lineEdit_qte_total_confirmation_fiveRow.clear()
+            # Calculer la quantité totale perdue
+            total_lost_volume = (nbr_tests * (confirmation_percentage / 100)) * qty_per_test
+
+            # Convertir dans l'unité d'affichage si nécessaire
+            if qty_unit != display_unit:
+                if self.calculator.are_units_compatible(qty_unit, display_unit):
+                    total_lost_volume = self.calculator.convert_value(total_lost_volume, qty_unit, display_unit)
+                else:
+                    self.show_error_message(f"Conversion impossible entre {qty_unit} et {display_unit}")
+                    return
+
+            # Afficher le résultat
+            self.lineEdit_qte_total_confirmation_fiveRow.setText(f"{total_lost_volume:.2f} {display_unit}")
 
         except ValueError as e:
             self.show_error_message(f"Erreur de calcul : {e}")
             self.lineEdit_qte_total_confirmation_fiveRow.clear()
 
+        
     def calculate_all(self):
-        """Méthode pour le bouton Calculer"""
         try:
-            # Récupérer l'unité choisie dans comboBox_unite_qt_a_commander_sixRow
-            target_unit = self.comboBox_unite_qt_a_commander_sixRow.currentText()
-
-            # Extraction de la consommation par unité de temps
+            # Extraction des données à partir de lineEdit_consommation_par_unite_de_temps_firstRow
             consommation_text = self.lineEdit_consommation_par_unite_de_temps_firstRow.text()
-            if not consommation_text:
-                self.show_error_message("Veuillez calculer la consommation d'abord.")
-                return
-
-            # Extraire la valeur numérique (10.00) et l'unité (ml) en ignorant la partie temporelle
-            consommation_value = float(consommation_text.split()[0])  # Extraire la valeur numérique
-            consommation_unit = consommation_text.split()[1].split('/')[0]  # Extraire "ml" de "ml/10 jours"
-
-            # Extraction du volume total de calibration
-            calibration_volume_text = self.lineEdit_total_calibration_volume.text()
-            if not calibration_volume_text:
-                self.show_error_message("Veuillez calculer le volume total de calibration d'abord.")
-                return
-            calibration_volume_value = float(calibration_volume_text.split()[0])
-            calibration_unit = calibration_volume_text.split()[1]
-
-            # Extraction du volume total utilisé pour les contrôles
-            controle_volume_text = self.lineEdit_qte_total_controle_fourthRow.text()
-            if not controle_volume_text:
-                self.show_error_message("Veuillez calculer le volume total utilisé pour les contrôles d'abord.")
-                return
-            controle_volume_value = float(controle_volume_text.split()[0])
-            controle_unit = controle_volume_text.split()[1]
-
-            # Extraction du volume total perdu lors de la confirmation
-            confirmation_volume_text = self.lineEdit_qte_total_confirmation_fiveRow.text()
-            if not confirmation_volume_text:
-                self.show_error_message("Veuillez calculer le volume total perdu lors de la confirmation d'abord.")
-                return
-            confirmation_volume_value = float(confirmation_volume_text.split()[0])
-            confirmation_unit = confirmation_volume_text.split()[1]
-
-            # Récupérer la valeur de dilution
-            dilution_volume_text = self.lineEdit_qte_perdue_dilution.text()
-            dilution_volume_value = float(dilution_volume_text.split()[0]) if dilution_volume_text else 0.0
-            dilution_unit = "µL"  # Unité par défaut de la dilution (à adapter si nécessaire)
-
-            # Convertir toutes les valeurs dans l'unité choisie (target_unit)
-            if consommation_unit != target_unit:
-                if self.calculator.are_units_compatible(consommation_unit, target_unit):
-                    consommation_value = self.calculator.convert_value(consommation_value, consommation_unit, target_unit)
-                else:
-                    self.show_error_message(f"Conversion impossible entre {consommation_unit} et {target_unit}")
-                    return
-
-            if calibration_unit != target_unit:
-                if self.calculator.are_units_compatible(calibration_unit, target_unit):
-                    calibration_volume_value = self.calculator.convert_value(calibration_volume_value, calibration_unit, target_unit)
-                else:
-                    self.show_error_message(f"Conversion impossible entre {calibration_unit} et {target_unit}")
-                    return
-
-            if controle_unit != target_unit:
-                if self.calculator.are_units_compatible(controle_unit, target_unit):
-                    controle_volume_value = self.calculator.convert_value(controle_volume_value, controle_unit, target_unit)
-                else:
-                    self.show_error_message(f"Conversion impossible entre {controle_unit} et {target_unit}")
-                    return
-
-            if confirmation_unit != target_unit:
-                if self.are_units_compatible(confirmation_unit, target_unit):
-                    confirmation_volume_value = self.calculator.convert_value(confirmation_volume_value, confirmation_unit, target_unit)
-                else:
-                    self.show_error_message(f"Conversion impossible entre {confirmation_unit} et {target_unit}")
-                    return
-
-            if dilution_unit != target_unit:
-                if self.calculator.are_units_compatible(dilution_unit, target_unit):
-                    dilution_volume_value = self.calculator.convert_value(dilution_volume_value, dilution_unit, target_unit)
-                else:
-                    self.show_error_message(f"Conversion impossible entre {dilution_unit} et {target_unit}")
-                    return
-
-            # Calculer la quantité ajustée (incluant la dilution)
-            qte_cm_ajustee = (
-                consommation_value
-                + calibration_volume_value
-                + controle_volume_value
-                + confirmation_volume_value
-                + dilution_volume_value  # Ajouter la valeur de dilution
-            )
-            self.lineEdit_qte_cm_ajustee_sixRow.setText(f"{qte_cm_ajustee:.2f} {target_unit}")
-
-            # Calcul de la consommation moyenne journalière
-            periode_temps = float(consommation_text.split('/')[1].split()[0])  # Extraire "10" de "ml/10 jours"
-            if periode_temps == 0:
-                self.show_error_message("La période de temps ne peut pas être zéro.")
-                return
-            consommation_moyenne_journaliere = consommation_value / periode_temps  # Exemple : 10.00 / 10 = 1.00 ml/jour
-
-            # Extraction des paramètres supplémentaires pour le calcul de la quantité à commander
-            jours_livraison_text = self.lineEdit_jours_livraison_sixRow.text()
-            stock_actuel_text = self.lineEdit_nbr_test_stock_actuel_sixRow.text()
-
-            if not jours_livraison_text or not stock_actuel_text:
-                self.show_error_message("Veuillez entrer les jours de livraison et le stock actuel.")
-                return
-
-            jours_livraison = float(jours_livraison_text)
-            stock_actuel = float(stock_actuel_text)
-
-            # Calcul de lineEdit_qte_a_commander_sixRow
-            qte_a_commander = qte_cm_ajustee + (consommation_moyenne_journaliere * jours_livraison) - stock_actuel
-
-            # Vérifier si la quantité à commander est négative ou nulle
-            if qte_a_commander <= 0:
-                self.lineEdit_qte_a_commander_sixRow.setText("Couverture suffisante")
-            else:
-                self.lineEdit_qte_a_commander_sixRow.setText(f"{qte_a_commander:.2f} {target_unit}")
-
+            
+            # Utiliser une regex pour extraire la valeur, l'unité et la période
+            match = re.match(r"([\d.]+)\s*([a-zA-Z]+)\/(\d+)\s*([a-zA-Z]+)", consommation_text)
+            if not match:
+                raise ValueError("Format incorrect pour la consommation. Le format attendu est '100.00 ml/20 Jours'")
+            
+            consommation_value = float(match.group(1))  # Ex: 100.00
+            consommation_unit = match.group(2)          # Ex: ml
+            time_value = int(match.group(3))            # Ex: 20
+            time_unit = match.group(4)                  # Ex: Jours
+            
+            # Collecter tous les champs nécessaires
+            fields = {
+                "consommation": {
+                    "value": consommation_value,
+                    "unit": consommation_unit,
+                    'period': time_value
+                },
+                "calibration": {
+                    "value": float(self.lineEdit_total_calibration_volume.text().split()[0]),
+                    "unit": self.lineEdit_total_calibration_volume.text().split()[1]
+                },
+                "pertes": {
+                    "value": float(self.lineEdit_total_loss.text().split()[0]),
+                    "unit": self.lineEdit_total_loss.text().split()[1]
+                },
+                "confirmation": {
+                    "value": float(self.lineEdit_qte_total_confirmation_fiveRow.text().split()[0]),
+                    "unit": self.lineEdit_qte_total_confirmation_fiveRow.text().split()[1]
+                },
+                "stock_actuel": {
+                    "value": float(self.lineEdit_nbr_test_stock_actuel_sixRow.text()),
+                    "unit": self.comboBox_unite_stoc_test_sixRow.currentText()
+                },
+                "conditionnement": {
+                    "value": float(self.lineEdit_qte_totale_conditionnement_sixRow.text()),
+                    "unit": self.comboBox_qte_totale_conditionnement_unit_sixRow.currentText(),
+                    "packaging": self.comboBox_qte_a_commander_unit_sixRow.currentText()
+                },
+                "livraison": {
+                     "value": float(self.lineEdit_jours_livraison_sixRow.text()),  # Valeur saisie pour le délai de livraison
+                    "unit": self.comboBox_unite_date_livraison_sixRow.currentText()  # Unité sélectionnée pour le délai de livraison
+                }
+            }
+            
+            # Lancer le calcul dans un thread
+            self.qac_calculator = QACCalculator(fields, self.calculator)
+            self.qac_calculator.calculation_finished.connect(self.display_qac_results)
+            self.qac_calculator.error_occurred.connect(self.show_error_message)
+            self.qac_calculator.start()
+            
         except ValueError as e:
-            self.show_error_message(f"Erreur de calcul : {e}")
-        except ZeroDivisionError:
-            self.show_error_message("Erreur : division par zéro.")
+            self.show_error_message(f"Erreur de saisie : {e}")
         except Exception as e:
-            self.show_error_message(f"Une erreur inattendue s'est produite : {e}")
+            self.show_error_message(f"Erreur inattendue : {e}")
+
+    def display_qac_results(self, results):
+        try:
+            self.lineEdit_cma_sixRow.setText(results['cmj'])
+            self.lineEdit_qte_a_commander_sixRow.setText(results['qac'])
+            self.lineEdit_qte_cm_ajustee_sixRow.setText(results['cma'])
+            
+            # Afficher un message de succès
+            QMessageBox.information(self, "Calcul terminé", 
+                f"Les calculs ont été effectués avec succès:\n\n"
+                f"CMA: {results['cma']}\n"
+                f"CMJ: {results['cmj']}\n"
+                f"QAC: {results['qac']}"
+            )
+        except Exception as e:
+            self.show_error_message(f"Erreur lors de l'affichage des résultats : {e}")
+            
+    def generate_explanation_report(self):
+            """
+            Génère un rapport PDF explicatif en collectant les données actuelles de l'interface.
+            """
+            data = {
+                'nbr_tests': float(self.lineEdit_nbrs_test_firstRow.text() or "0"),
+                'qty_per_test': float(self.lineEdit_qte_par_unite_de_test_firstRow.text() or "0"),
+                'time_value': self.number_time_spinBox_firstRow.value(),
+                'time_unit': self.comboBox_periode_temps_firstRow.currentText(),
+                'unit': self.comboBox_unite_physique_firstRow.currentText(),
+                'qty_per_unit': float(self.lineEdit_qte_par_unite_secondRow.text() or "0"),
+                'total_qty': float(self.lineEdit_qte_totale_par_conditionnment_secondRow.text() or "0"),
+                'dead_volume': float(self.lineEdit_qte_volume_mor_secondRow.text() or "0"),
+                'unit_qty': self.comboBox_qte_par_unite_secondRow.currentText(),
+                'unit_total': self.comboBox_unite_qte_totale_par_conditionnement.currentText(),
+                'unit_dead': self.comboBox_unite_volume_mort_secondRow.currentText(),
+                'calibration_volume': float(self.lineEdit_qte_calibration_thirdRow.text() or "0"),
+                'calibration_frequency': self.spinBox_frequence_calibration_thirdRow.value(),
+                'calibration_period': self.comboBox_fois_par_periode_temp_thirdRow.currentText(),
+                'cal_unit': self.comboBox_unite_qte_calibration_thirdRow.currentText(),
+                'total_qty_loss': float(self.lineEdit_total_qty.text() or "0"),
+                'manipulation_loss': self.spinBox_manipulation_loss.value(),
+                'contamination_loss': self.spinBox_contamination_loss.value(),
+                'degradation_loss': self.spinBox_degradation_loss.value(),
+                'loss_unit': self.comboBox_loss_unit.currentText(),
+                'confirmation_qty': float(self.lineEdit_qte_test_refais_confirmation_fiveRow.text() or "0"),
+                'confirmation_percent': self.spinBox_percent_confirmation_test_repete.value(),
+                'conf_unit': self.comboBox_unite_qte_test_refais_confirmation_fiveRow.currentText(),
+                'stock_actuel': float(self.lineEdit_nbr_test_stock_actuel_sixRow.text() or "0"),
+                'livraison': float(self.lineEdit_jours_livraison_sixRow.text() or "0"),
+                'cond_unit': self.comboBox_qte_totale_conditionnement_unit_sixRow.currentText()
+            }
+
+            try:
+                generate_explanation_report(data)
+            except Exception as e:
+                self._show_detailed_error(str(e))
+            
+    def show_error_message(self, message):
+        """Affiche un message d'erreur dans une boîte de dialogue."""
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Critical)
+        msg.setText("Erreur")
+        msg.setInformativeText(message)
+        msg.setWindowTitle("Erreur")
+        msg.exec_()
+
+            
+    def reset_fields(self):
+        """
+        Affiche une boîte de dialogue pour sélectionner le groupe à réinitialiser.
+        Réinitialise les champs du groupe sélectionné.
+        """
+        # Créer une boîte de dialogue avec des options
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Réinitialiser les champs")
+        layout = QVBoxLayout(dialog)
+
+        # Ajouter un QLabel pour expliquer l'action
+        label = QLabel("Sélectionnez le groupe à réinitialiser :", dialog)
+        layout.addWidget(label)
+
+        # Ajouter des boutons radio pour chaque groupe
+        group_buttons = []
+        groups = [
+            "Gestion des Paramètres de Consommation",
+            "Tests selon le Type de Conditionnement",
+            "Paramètres de calibration des équipements",
+            "Optimisation des Réactifs - Suivi des Pertes et Utilisation",
+            "Paramètres de Validation et Confirmation",
+            "Résultats des Tests - Analyse et Rapport"
+        ]
+
+        for group in groups:
+            radio_button = QRadioButton(group, dialog)
+            layout.addWidget(radio_button)
+            group_buttons.append(radio_button)
+
+        # Ajouter un bouton "Tout réinitialiser"
+        reset_all_button = QRadioButton("Tout réinitialiser", dialog)
+        layout.addWidget(reset_all_button)
+        group_buttons.append(reset_all_button)
+
+        # Ajouter un bouton "Valider"
+        button_box = QHBoxLayout()
+        ok_button = QPushButton("Valider", dialog)
+        cancel_button = QPushButton("Annuler", dialog)
+        button_box.addWidget(ok_button)
+        button_box.addWidget(cancel_button)
+        layout.addLayout(button_box)
+
+        # Connexion des boutons
+        def on_ok():
+            selected_group = None
+            for button in group_buttons:
+                if button.isChecked():
+                    selected_group = button.text()
+                    break
+
+            if selected_group:
+                self.reset_group(selected_group)
+                dialog.accept()
+
+        ok_button.clicked.connect(on_ok)
+        cancel_button.clicked.connect(dialog.reject)
+
+        # Afficher la boîte de dialogue
+        dialog.exec_()
+        
+    def reset_group(self, group_name):
+        """
+        Réinitialise les champs du groupe spécifié.
+        :param group_name: Nom du groupe à réinitialiser.
+        """
+        if group_name == "Gestion des Paramètres de Consommation":
+            self.lineEdit_nbrs_test_firstRow.clear()
+            self.number_time_spinBox_firstRow.setValue(1)
+            self.comboBox_periode_temps_firstRow.setCurrentIndex(0)
+            self.lineEdit_qte_par_unite_de_test_firstRow.clear()
+            self.comboBox_unite_physique_firstRow.setCurrentIndex(0)
+            self.lineEdit_qte_totale_conditionnement_firstRow.clear()
+            self.comboBox_unite_qte_totale_conditionnement_firstRow.setCurrentIndex(0)
+            self.lineEdit_consommation_par_unite_de_temps_firstRow.clear()
+            self.comboBox_unite_consommation_par_unite_de_temps.setCurrentIndex(0)
+
+        elif group_name == "Tests selon le Type de Conditionnement":
+            self.lineEdit_qte_par_unite_secondRow.clear()
+            self.comboBox_qte_par_unite_secondRow.setCurrentIndex(0)
+            self.lineEdit_qte_volume_mor_secondRow.clear()
+            self.comboBox_unite_volume_mort_secondRow.setCurrentIndex(0)
+            self.lineEdit_qte_totale_par_conditionnment_secondRow.clear()
+            self.comboBox_unite_qte_totale_par_conditionnement.setCurrentIndex(0)
+            self.lineEdit_tests_par_conditionnment_secondRow.clear()
+            self.comboBox_outil_mesure.setCurrentIndex(0)
+
+        elif group_name == "Paramètres de calibration des équipements":
+            self.lineEdit_qte_calibration_thirdRow.clear()
+            self.spinBox_frequence_calibration_thirdRow.setValue(1)
+            self.comboBox_fois_par_periode_temp_thirdRow.setCurrentIndex(0)
+            self.lineEdit_total_calibrations.clear()
+            self.lineEdit_total_calibration_volume.clear()
+            self.comboBox_qte_totale_calibration_unite.setCurrentIndex(0)
+
+        elif group_name == "Optimisation des Réactifs - Suivi des Pertes et Utilisation":
+            self.lineEdit_total_qty.clear()
+            self.comboBox_total_qty_unit.setCurrentIndex(0)
+            self.spinBox_manipulation_loss.setValue(0)
+            self.spinBox_contamination_loss.setValue(0)
+            self.spinBox_degradation_loss.setValue(0)
+            self.lineEdit_total_loss.clear()
+            self.comboBox_loss_unit.setCurrentIndex(0)
+
+        elif group_name == "Paramètres de Validation et Confirmation":
+            self.lineEdit_qte_test_refais_confirmation_fiveRow.clear()
+            self.comboBox_unite_qte_test_refais_confirmation_fiveRow.setCurrentIndex(0)
+            self.spinBox_percent_confirmation_test_repete.setValue(0)
+            self.lineEdit_qte_total_confirmation_fiveRow.clear()
+            self.comboBox_unite_qte_totale_confirmation_fiveRow.setCurrentIndex(0)
+
+        elif group_name == "Résultats des Tests - Analyse et Rapport":
+            self.comboBox_analyse_sixRow.setCurrentIndex(0)
+            self.lineEdit_jours_livraison_sixRow.clear()
+            self.comboBox_unite_date_livraison_sixRow.setCurrentIndex(0)
+            self.lineEdit_nbr_test_stock_actuel_sixRow.clear()
+            self.comboBox_unite_stoc_test_sixRow.setCurrentIndex(0)
+            self.lineEdit_qte_cm_ajustee_sixRow.clear()
+            self.comboBo_unite_cm_ajustee_sixRow.setCurrentIndex(0)
+            self.lineEdit_qte_a_commander_sixRow.clear()
+            self.comboBox_unite_qt_a_commander_sixRow.setCurrentIndex(0)
+
+        elif group_name == "Tout réinitialiser":
+            self.reset_group("Gestion des Paramètres de Consommation")
+            self.reset_group("Tests selon le Type de Conditionnement")
+            self.reset_group("Paramètres de calibration des équipements")
+            self.reset_group("Optimisation des Réactifs - Suivi des Pertes et Utilisation")
+            self.reset_group("Paramètres de Validation et Confirmation")
+            self.reset_group("Résultats des Tests - Analyse et Rapport")
+
+        QMessageBox.information(self, "Réinitialisation", f"Les champs du groupe '{group_name}' ont été réinitialisés.")
+        
+    def _show_detailed_error(self, error_msg):
+        """Affiche une erreur détaillée"""
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Critical)
+        msg.setText(self.tr("Erreur critique"))
+        msg.setInformativeText(self.tr("Une erreur est survenue lors de la génération du rapport."))
+        msg.setDetailedText(error_msg)
+        msg.exec_()
+                  

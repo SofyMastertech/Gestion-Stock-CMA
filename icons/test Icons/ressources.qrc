@@ -1,0 +1,34 @@
+<RCC>
+  <qresource>
+    <file>cross close.png</file>
+    <file>cross close1.png</file>
+    <file>edit.png</file>
+    <file>filter.png</file>
+    <file>filter@2x.png</file>
+    <file>filter1.png</file>
+    <file>filter1@2x.png</file>
+    <file>refresh.png</file>
+    <file>refresh1.png</file>
+    <file>refresh2.png</file>
+    <file>save.png</file>
+    <file>save@2x.png</file>
+    <file>save1.png</file>
+    <file>search1.png</file>
+    <file>search1@2x.png</file>
+    <file>search1_2.png</file>
+    <file>search1_45.png</file>
+    <file>search2.png</file>
+    <file>search2@2x.png</file>
+    <file>search3.png</file>
+    <file>search3@2x.png</file>
+    <file>search4.png</file>
+    <file>search4@2x.png</file>
+    <file>search5.png</file>
+    <file>search5@2x.png</file>
+    <file>tube.png</file>
+    <file>tube1.png</file>
+    <file>tube2.png</file>
+    <file>tube3.png</file>
+    <file>tube4.png</file>
+  </qresource>
+</RCC>
